@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 import fs from "node:fs"
 import path from "node:path"
 
-// Root directory for the file browser — defaults to project root
-const STORAGE_ROOT = process.env.XO_STORAGE_ROOT || process.cwd()
+// Root directory for the file browser — defaults to workspace/ local folder
+const STORAGE_ROOT = process.env.XO_STORAGE_ROOT || path.join(process.cwd(), "workspace")
 
 type FSEntry = {
   name: string
@@ -62,8 +62,8 @@ export async function GET(request: NextRequest) {
     for (const entry of dirEntries) {
       // Skip hidden files/folders starting with . (except .env-like files at root)
       if (entry.name.startsWith(".") && relativePath !== "") continue
-      // Always skip .git, node_modules, .next, .claude
-      if ([".git", "node_modules", ".next", ".claude", "__pycache__", ".turbo"].includes(entry.name)) continue
+      // Always skip .git, node_modules, .next, .claude, .DS_Store
+      if ([".git", "node_modules", ".next", ".claude", "__pycache__", ".turbo", ".DS_Store"].includes(entry.name)) continue
 
       try {
         const entryPath = path.join(targetPath, entry.name)

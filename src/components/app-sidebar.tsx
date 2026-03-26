@@ -4,7 +4,6 @@ import * as React from "react"
 import { useState, useEffect, useCallback } from "react"
 
 import { usePathname, useRouter } from "next/navigation"
-import { NavDocuments } from "@/components/nav-documents"
 import { NavMain } from "@/components/nav-main"
 import { NavSecondary } from "@/components/nav-secondary"
 import { NavUser } from "@/components/nav-user"
@@ -29,10 +28,10 @@ import {
   UsersIcon,
   Settings2Icon,
   CircleHelpIcon,
-  DatabaseIcon,
-  FileChartColumnIcon,
+  FolderIcon,
   FileIcon,
-  HashIcon,
+  FileTextIcon,
+  FileCodeIcon,
   MoreHorizontalIcon,
   CommandIcon,
   MessageSquareIcon,
@@ -85,17 +84,6 @@ const data = {
   navSecondary: [
     { title: "Settings", url: "#", icon: <Settings2Icon /> },
     { title: "Get Help", url: "#", icon: <CircleHelpIcon /> },
-  ],
-  documents: [
-    { name: "Storage", url: "/storage", icon: <DatabaseIcon /> },
-    { name: "Reports", url: "/reports", icon: <FileChartColumnIcon /> },
-    { name: "Docs", url: "/docs", icon: <FileIcon /> },
-  ],
-  channels: [
-    { name: "general", url: "/channel/general", icon: <HashIcon /> },
-    { name: "code-review", url: "/channel/code-review", icon: <HashIcon /> },
-    { name: "design", url: "/channel/design", icon: <HashIcon /> },
-    { name: "approvals", url: "/channel/approvals", icon: <HashIcon /> },
   ],
 }
 
@@ -184,6 +172,51 @@ function truncatePrompt(prompt: string, max = 40): string {
   return prompt.slice(0, max) + "…"
 }
 
+// ─── Workspace folder entries ────────────────────────────────
+
+type FSEntry = {
+  name: string
+  type: "folder" | "file"
+  extension: string
+}
+
+function getEntryIcon(entry: FSEntry) {
+  if (entry.type === "folder") return FolderIcon
+  switch (entry.extension) {
+    case "md":
+    case "txt":
+    case "pdf":
+      return FileTextIcon
+    case "ts":
+    case "tsx":
+    case "js":
+    case "jsx":
+    case "py":
+    case "json":
+    case "yml":
+    case "yaml":
+    case "toml":
+      return FileCodeIcon
+    default:
+      return FileIcon
+  }
+}
+
+function useWorkspaceEntries() {
+  const [entries, setEntries] = useState<FSEntry[]>([])
+
+  useEffect(() => {
+    fetch("/api/storage?path=")
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.entries) setEntries(data.entries)
+      })
+      .catch(() => {})
+  }, [])
+
+  return entries
+}
+
 // ─── Component ──────────────────────────────────────────────
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
@@ -193,6 +226,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const agentId = isAgentMode ? pathname.split("/")[2] : null
   const { sessions, createSession, deleteSession } = useBackendSessions()
   const tasks = useBackendTasks()
+  const workspaceEntries = useWorkspaceEntries()
 
   // Get the default agent id for session chat links
   const defaultAgentId = agentId || "aria"
@@ -212,25 +246,29 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       <SidebarContent>
         <NavMain items={navItems} />
 
-        <NavDocuments items={data.documents} />
-
-        {/* Channels */}
+        {/* Folders */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>Channels</SidebarGroupLabel>
+          <SidebarGroupLabel>Folders</SidebarGroupLabel>
           <SidebarMenu>
-            {data.channels.slice(0, 3).map((ch) => (
-              <SidebarMenuItem key={ch.name}>
-                <SidebarMenuButton render={<a href={ch.url} />}>
-                  {ch.icon}
-                  <span>{ch.name}</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-            {data.channels.length > 3 && (
+            {workspaceEntries.map((entry) => {
+              const Icon = getEntryIcon(entry)
+              const url = entry.type === "folder"
+                ? `/storage?path=${encodeURIComponent(entry.name)}`
+                : `/storage`
+              return (
+                <SidebarMenuItem key={entry.name}>
+                  <SidebarMenuButton render={<a href={url} />}>
+                    <Icon className="size-4" />
+                    <span>{entry.name}</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              )
+            })}
+            {workspaceEntries.length === 0 && (
               <SidebarMenuItem>
-                <SidebarMenuButton className="text-sidebar-foreground/70">
-                  <MoreHorizontalIcon className="text-sidebar-foreground/70" />
-                  <span>More</span>
+                <SidebarMenuButton className="text-sidebar-foreground/40" disabled>
+                  <FolderIcon className="size-3 text-sidebar-foreground/30" />
+                  <span className="text-xs">Empty workspace</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
