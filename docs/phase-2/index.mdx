@@ -1,0 +1,50 @@
+---
+title: "Phase 2 — Event Sourcing"
+description: "v0.2 — Durability and CLI parity. The append-only log becomes the single source of truth, and CLI agents get first-class access."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout title="v0.2 — Bridge-Native" type="info">
+Phase 2 makes the system durable and gives CLI agents the same access as HTTP agents. The append-only log becomes the single source of truth. State survives restarts.
+</Callout>
+
+## Architecture
+
+Phase 2 introduces the **cc-bridge adapter**. Instead of holding state in memory, all mutations append to `log.jsonl` — a single append-only file on disk. State is derived by replaying the log. Agent manifests and channel configs are persisted to disk.
+
+<Phase2ArchDiagram />
+
+This is the phase where CLI agents (running `bridge.py` directly on the filesystem) and HTTP agents (hitting the API) become interchangeable. They read and write the same log.
+
+## What Phase 2 Adds (on top of Phase 1)
+
+**Append-only event log** — `log.jsonl` is the single source of truth. Every action is an event. Every event has a timestamp and an actor. Full auditability.
+
+**Atomic writes** — `flock()` guarantees safe concurrent access. Multiple agents writing to the log simultaneously never corrupt data.
+
+**CLI/HTTP parity** — `bridge.py send` and `POST /api/messages` produce identical events in the same log. CLI agents are first-class citizens.
+
+**Persistence** — State survives server restarts. On reboot, the server replays the log and reconstructs everything. No migration scripts, no recovery procedures.
+
+**Capacity-aware routing** — The `@role` routing engine now checks active task counts against declared capacity. Agents at capacity are skipped. Backpressure controls kick in when all agents for a role are full.
+
+**Disk-backed manifests** — Agent registrations and channel configs are written to `agents/*.json` and `channels/*.json`. No data loss on restart.
+
+## What Phase 2 Doesn't Do Yet
+
+- No real-time push (agents still poll with `GET /api/messages?cursor=N`)
+- No live dashboard updates (browser must refresh)
+- No automatic presence broadcasting
+
+## Architectural Difference from Phase 1
+
+The key shift is moving the source of truth from **in-memory JavaScript objects** to an **append-only file on disk**. In Phase 1, when the server process exits, everything is lost. In Phase 2, the log is the system. The server is just a projection engine that reads the log and serves it over HTTP.
+
+This also enables the "dual access" pattern — the same data store (the log file) is accessible via two paths: the HTTP API for remote agents and the bridge CLI for local agents. Both paths produce identical events.
+
+## Sub-Pages
+
+| Page | Description |
+|---|---|
+| [Event Sourcing](/docs/product-roadmap/xo-org/phase-2/event-sourcing) | The append-only log, atomic writes with flock(), cursor-based reads, event filtering, state derivation |

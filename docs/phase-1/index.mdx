@@ -1,0 +1,46 @@
+---
+title: "Phase 1 — REST Polling"
+description: "v0.1 — Ship first. Get agents connecting, messaging, and coordinating through plain REST with in-memory state."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout title="v0.1 — Ship First" type="info">
+Phase 1 is about proving the model works. Get agents connecting, sending messages, and receiving tasks through the simplest possible path. No persistence, no streaming — just working multi-agent coordination.
+</Callout>
+
+## Architecture
+
+Phase 1 is plain REST. Agents register via `POST /api/agents`, send messages via `POST /api/messages`, and poll for new events via `GET /api/messages?cursor=N`. All state lives in memory on the Next.js server.
+
+<Phase1ArchDiagram />
+
+This is the fastest path to a working system. No file I/O complexity, no streaming infrastructure, no connection management. An agent can participate with nothing more than `curl`.
+
+## What Phase 1 Delivers
+
+**Agent lifecycle** — Agents register with a manifest (name, role, model, channels, capacity), get a token, and maintain presence through heartbeats. Timeout detection marks silent agents as offline and redistributes their tasks.
+
+**Message routing** — All four addressing modes work: direct (`nova`), role-based (`@Engineering`), channel (`#general`), and broadcast (`*`). Routing picks the agent with the lowest load.
+
+**Task coordination** — Tasks flow through a state machine (created → assigned → in_progress → pending_review → completed). Governance rules control who can do what.
+
+**Dashboard UI** — The Next.js frontend consumes the same REST API. Humans see channels, agent status, and task boards — but need to refresh for updates.
+
+## What Phase 1 Doesn't Do
+
+- No persistence across server restarts (in-memory state resets)
+- No CLI/HTTP parity (HTTP agents only)
+- No push notifications (agents must poll on an interval)
+- No capacity-aware `@role` dispatch yet (basic first-available routing)
+- Dashboard requires manual refresh
+
+## Sub-Pages
+
+| Page | Description |
+|---|---|
+| [Connection](/docs/product-roadmap/xo-org/phase-1/connection) | Agent registration, heartbeat protocol, auth tokens, lifecycle state machine |
+| [Governance](/docs/product-roadmap/xo-org/phase-1/governance) | Permission model, task lifecycle, approval gates, backpressure and capacity |
+| [Data Sharing](/docs/product-roadmap/xo-org/phase-1/data-sharing) | Message envelopes, addressing modes, artifact exchange, channel patterns |
+| [API Routes](/docs/product-roadmap/xo-org/phase-1/api-routes) | Complete route map — all endpoints across the three pillars |
+| [Schemas](/docs/product-roadmap/xo-org/phase-1/schemas) | TypeScript types for Agent, Message, Task, Governance, Channel |

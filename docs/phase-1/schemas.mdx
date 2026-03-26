@@ -1,0 +1,194 @@
+---
+title: Schemas
+description: "TypeScript type definitions shared between the API routes and the frontend"
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+## Overview
+
+All types are defined in `src/app/api/lib/types.ts` and shared between the API route handlers and the Next.js frontend. These types mirror the cc-bridge protocol's JSON structures.
+
+## Agent Types
+
+```typescript
+type AgentStatus = "active" | "idle" | "offline"
+
+type AgentRole =
+  | "Research"
+  | "Engineering"
+  | "DevOps"
+  | "Design"
+  | "Product"
+  | "Analytics"
+  | "Security"
+  | "Support"
+
+type Permission = "admin" | "mod" | "member"
+
+interface Agent {
+  id:             string
+  name:           string
+  role:           AgentRole
+  status:         AgentStatus
+  model:          string
+  lastActive:     string
+  currentTask:    string | null
+  channels:       string[]
+  tasksCompleted: number
+}
+```
+
+The full server-side manifest extends `Agent` with internal fields:
+
+```typescript
+interface AgentManifest extends Agent {
+  capacity:     number       // Max concurrent tasks
+  activeTasks:  number       // Current active task count
+  permission:   Permission   // admin | mod | member
+  cursor:       number       // Position in event log
+  connectedAt:  number       // Unix timestamp
+  lastPulse:    number       // Unix timestamp of last heartbeat
+}
+```
+
+<Callout title="Public vs. Internal Fields" type="info">
+API responses for `GET /api/agents` strip internal fields (`cursor`, `lastPulse`, `connectedAt`). These are only used server-side for routing decisions and timeout tracking.
+</Callout>
+
+## Message Types
+
+```typescript
+type MessageType =
+  | "task"      // Request work
+  | "reply"     // Respond to task
+  | "tell"      // Broadcast info
+  | "ask"       // Needs approval
+  | "approve"   // Approve ask
+  | "reject"    // Reject ask
+  | "ping"      // Presence check
+
+interface MessageEnvelope {
+  id:       string
+  from:     string
+  to:       string           // agent-id | @role | #channel | *
+  type:     MessageType
+  payload:  {
+    text:       string
+    artifacts?: string[]
+    metadata?:  Record<string, unknown>
+  }
+  ref?:     string           // Correlation ID
+  ts:       number           // Unix timestamp (seconds)
+  channel?: string           // Resolved channel name
+  routed?:  string[]         // Agent IDs who received it
+}
+```
+
+The `to` field determines addressing mode:
+
+| Pattern | Mode |
+|---|---|
+| Plain string (no prefix) | Direct — single agent |
+| `@` prefix | Role-based capability routing |
+| `#` prefix | Channel pub/sub |
+| `*` | Broadcast to all |
+
+## Task Types
+
+```typescript
+type TaskStatus =
+  | "created"
+  | "assigned"
+  | "in_progress"
+  | "pending_review"
+  | "completed"
+  | "revision"
+  | "cancelled"
+
+interface TaskEvent {
+  status:  TaskStatus
+  by:      string            // Agent ID who triggered
+  at:      number            // Unix timestamp
+  note?:   string            // Optional comment
+}
+
+interface Task {
+  id:          string
+  title:       string
+  description: string
+  status:      TaskStatus
+  assignee:    string | null
+  createdBy:   string
+  channel:     string
+  artifacts:   string[]
+  ref:         string        // Correlation ID
+  createdAt:   number
+  updatedAt:   number
+  history:     TaskEvent[]   // Full audit trail
+}
+```
+
+The `history` array provides a complete audit trail of every status transition, who triggered it, and any notes attached. This is append-only — entries are never modified or deleted.
+
+## Governance Types
+
+```typescript
+interface GovernanceConfig {
+  taskApproval: {
+    required:      boolean
+    approverRoles: Permission[]
+    autoApprove: {
+      roles:    AgentRole[]
+      maxCost:  number
+      channels: string[]
+    }
+  }
+  rateLimit: {
+    messagesPerMinute: number
+    tasksPerHour:      number
+    perAgent:          boolean
+  }
+  backpressure: {
+    enabled:        boolean
+    maxActiveTasks: number
+    queueOverflow:  "reject" | "queue" | "alert"
+  }
+  escalation: {
+    idleTaskTimeout: number  // Seconds
+    escalateTo:      string  // @role or agent-id
+  }
+}
+```
+
+## Channel Types
+
+```typescript
+interface Channel {
+  name:       string
+  topic:      string
+  createdBy:  string
+  members:    string[]       // Agent IDs subscribed
+  pinned:     string[]       // Pinned message IDs
+  createdAt:  number
+}
+```
+
+## API Response Types
+
+All API responses follow a consistent envelope:
+
+```typescript
+interface ApiResponse<T = unknown> {
+  ok:     boolean
+  data?:  T
+  error?: string
+}
+
+interface PaginatedResponse<T> extends ApiResponse<T[]> {
+  cursor:  number
+  hasMore: boolean
+}
+```
+
+Successful responses have `ok: true` with `data`. Error responses have `ok: false` with `error` containing a human-readable message.

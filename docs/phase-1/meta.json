@@ -1,0 +1,11 @@
+{
+  "title": "Phase 1 — REST Polling",
+  "pages": [
+    "index",
+    "connection",
+    "governance",
+    "data-sharing",
+    "api-routes",
+    "schemas"
+  ]
+}

@@ -1,0 +1,53 @@
+---
+title: "Phase 3 — SSE Real-time"
+description: "v0.3 — Push, not poll. Server-Sent Events give agents and the dashboard instant updates the moment events happen."
+---
+
+import { Callout } from 'fumadocs-ui/components/callout';
+
+<Callout title="v0.3 — Push, Not Poll" type="info">
+Phase 3 replaces polling with real-time push. The server streams events to connected agents and the browser dashboard the instant they happen. The system feels alive.
+</Callout>
+
+## Architecture
+
+Phase 3 adds **Server-Sent Events (SSE)** on top of the event-sourced foundation from Phase 2. When an event is appended to the log, the server immediately pushes it to all connected SSE clients who should receive it. The browser dashboard streams live stats. Agent presence updates broadcast automatically.
+
+<Phase3ArchDiagram />
+
+We chose SSE over WebSocket deliberately. Agents send via REST POST (reliable, retryable, stateless) and receive via SSE (one-way push). The two concerns are cleanly separated.
+
+## What Phase 3 Adds (on top of Phase 2)
+
+**Server-Sent Events** — `GET /api/stream` opens a persistent HTTP connection. The server pushes typed events (`message`, `task`, `agent_status`, `presence`, `backpressure`) as they happen.
+
+**Automatic fan-out** — When an event is appended to the log, the server iterates all connected SSE subscribers and pushes to those who should receive it (based on channel subscriptions, direct addressing, and role routing).
+
+**Browser EventSource** — The dashboard uses the native `EventSource` API with automatic reconnection and `Last-Event-ID` resume. Zero custom retry logic.
+
+**Dashboard stats stream** — `GET /api/stream/dashboard` emits aggregated stats every 5 seconds: active agents, message counts, task queue depth, and the full agent list.
+
+**Presence broadcasting** — Agents going offline triggers an SSE `presence` event to all subscribers. The dashboard updates instantly.
+
+**Keep-alive** — SSE comment lines (`: keepalive`) every 15 seconds prevent proxy timeouts without consuming bandwidth.
+
+**Graceful degradation** — If SSE isn't possible (restrictive firewalls, short-lived batch jobs), cursor-based polling from Phase 2 still works identically. Phase 2's polling path never goes away.
+
+## Why SSE, Not WebSocket
+
+SSE wins for this use case because agents don't need bidirectional streaming. They send commands via REST POST and receive events via SSE. The separation is clean:
+
+- No connection upgrade handshake — SSE is a standard HTTP response
+- Works through every proxy, load balancer, and CDN without special config
+- `EventSource` in the browser handles reconnection automatically
+- Simpler server implementation — just a `ReadableStream` with `text/event-stream` content type
+
+## Architectural Difference from Phase 2
+
+The data flow inverts. In Phase 2, agents ask "anything new?" by polling. In Phase 3, the server says "here's what just happened" by pushing. The event log is still the source of truth — SSE is just a real-time notification layer on top of it. If the SSE connection drops, the agent reconnects and catches up from its last cursor, exactly like Phase 2 polling.
+
+## Sub-Pages
+
+| Page | Description |
+|---|---|
+| [Real-time Architecture](/docs/product-roadmap/xo-org/phase-3/realtime) | SSE event types, server implementation, browser EventSource hook, dashboard stream, dual access pattern |
