@@ -21,7 +21,18 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { cn } from "@/lib/utils"
-import { getSessionMeta, ensureSessionMeta, clearSessionMessages } from "@/lib/session-store"
+import { getSessionMeta } from "@/lib/session-store"
+
+function formatRelativeSession(updatedAt: number): string {
+  const diffMs = Date.now() - updatedAt
+  const minutes = Math.floor(diffMs / 60000)
+  const hours = Math.floor(minutes / 60)
+  const days = Math.floor(hours / 24)
+  if (days > 0) return `${days}d ago`
+  if (hours > 0) return `${hours}h ago`
+  if (minutes > 0) return `${minutes}m ago`
+  return "just now"
+}
 import {
   LayoutDashboardIcon,
   TargetIcon,
@@ -41,8 +52,7 @@ import {
   ClockIcon,
   LoaderIcon,
   XCircleIcon,
-  PlusIcon,
-  Trash2Icon,
+
   SquareIcon,
 } from "lucide-react"
 
@@ -95,18 +105,52 @@ function getAgentNav(agentId: string) {
   ]
 }
 
+// ─── OpenClaw Gateway session type ──────────────────────────
+
+type GatewaySession = {
+  key: string
+  kind: string
+  chatType: string
+  sessionId: string
+  updatedAt: number
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  contextTokens: number
+  model: string
+  modelProvider: string
+  origin?: {
+    provider?: string
+    label?: string
+    from?: string
+    surface?: string
+    chatType?: string
+  }
+  lastChannel?: string
+}
+
 // ─── Backend hooks ──────────────────────────────────────────
 
 function useBackendSessions() {
-  const [sessions, setSessions] = useState<string[]>([])
+  const [sessions, setSessions] = useState<GatewaySession[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   const refresh = useCallback(() => {
-    fetch("/api/proxy?path=/sessions")
+    fetch("/api/openclaw/sessions")
       .then((r) => r.json())
       .then((data) => {
-        if (data.sessions) setSessions(data.sessions)
+        if (Array.isArray(data.sessions)) {
+          // Sort by most recently updated
+          const sorted = [...data.sessions].sort((a, b) => b.updatedAt - a.updatedAt)
+          setSessions(sorted)
+          setError(null)
+        } else if (data.error) {
+          setError(data.error)
+        }
       })
-      .catch(() => {})
+      .catch((e) => setError(e.message))
+      .finally(() => setLoading(false))
   }, [])
 
   useEffect(() => {
@@ -116,26 +160,7 @@ function useBackendSessions() {
     return () => clearInterval(interval)
   }, [refresh])
 
-  const createSession = useCallback(async () => {
-    try {
-      const res = await fetch("/api/proxy?path=/sessions", { method: "POST" })
-      const data = await res.json()
-      if (data.session_id) {
-        refresh()
-        return data.session_id
-      }
-    } catch {}
-    return null
-  }, [refresh])
-
-  const deleteSession = useCallback(async (sessionId: string) => {
-    try {
-      await fetch(`/api/proxy?path=/sessions/${sessionId}`, { method: "DELETE" })
-      refresh()
-    } catch {}
-  }, [refresh])
-
-  return { sessions, createSession, deleteSession, refresh }
+  return { sessions, loading, error, refresh }
 }
 
 function useBackendTasks() {
@@ -224,7 +249,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const router = useRouter()
   const isAgentMode = pathname.startsWith("/agent")
   const agentId = isAgentMode ? pathname.split("/")[2] : null
-  const { sessions, createSession, deleteSession } = useBackendSessions()
+  const { sessions, loading: sessionsLoading, error: sessionsError } = useBackendSessions()
   const tasks = useBackendTasks()
   const workspaceEntries = useWorkspaceEntries()
 
@@ -275,26 +300,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           </SidebarMenu>
         </SidebarGroup>
 
-        {/* Sessions */}
+        {/* Sessions — loaded live from OpenClaw Gateway */}
         <SidebarGroup className="group-data-[collapsible=icon]:hidden">
           <SidebarGroupLabel className="flex items-center">
             Sessions
-            <button
-              onClick={async () => {
-                const id = await createSession()
-                if (id) {
-                  ensureSessionMeta(id)
-                  router.push(`/agent/${defaultAgentId}/chat?session=${id}`)
-                }
-              }}
-              className="ml-auto flex size-5 items-center justify-center rounded-md text-sidebar-foreground/50 hover:text-sidebar-foreground hover:bg-sidebar-accent transition-colors"
-              title="New session"
-            >
-              <PlusIcon className="size-3.5" />
-            </button>
+            {!sessionsLoading && !sessionsError && sessions.length > 0 && (
+              <span className="ml-auto text-[10px] text-muted-foreground/50 tabular-nums">
+                {sessions.length}
+              </span>
+            )}
           </SidebarGroupLabel>
           <SidebarMenu>
-            {sessions.length === 0 && (
+            {sessionsLoading && (
+              <SidebarMenuItem>
+                <SidebarMenuButton className="text-sidebar-foreground/40" disabled>
+                  <LoaderIcon className="size-3 animate-spin text-sidebar-foreground/30" />
+                  <span className="text-xs">Loading…</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {!sessionsLoading && sessionsError && (
+              <SidebarMenuItem>
+                <SidebarMenuButton className="text-sidebar-foreground/40" disabled title={sessionsError}>
+                  <XCircleIcon className="size-3 text-red-400/60" />
+                  <span className="text-xs text-red-400/60">Gateway unreachable</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            )}
+            {!sessionsLoading && !sessionsError && sessions.length === 0 && (
               <SidebarMenuItem>
                 <SidebarMenuButton className="text-sidebar-foreground/40" disabled>
                   <CircleIcon className="size-3 text-sidebar-foreground/30" />
@@ -302,36 +335,40 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </SidebarMenuButton>
               </SidebarMenuItem>
             )}
-            {sessions.map((sessionId) => {
-              const meta = getSessionMeta(sessionId)
-              const title = meta?.title || "New session"
-              const isActive = pathname.includes(`session=${sessionId}`)
+            {sessions.map((session) => {
+              const isActive = pathname.includes(`session=${session.sessionId}`)
+              // Derive a human label: prefer origin.label, then provider, then key
+              const label =
+                session.origin?.label ||
+                (session.origin?.provider
+                  ? `${session.origin.provider} · ${session.chatType}`
+                  : session.key)
+              // Format relative time
+              const relativeTime = formatRelativeSession(session.updatedAt)
+              // Token usage as % of context window
+              const usagePct = session.contextTokens
+                ? Math.round((session.totalTokens / session.contextTokens) * 100)
+                : null
+
               return (
-                <SidebarMenuItem key={sessionId}>
+                <SidebarMenuItem key={session.key}>
                   <SidebarMenuButton
                     className={cn("h-auto py-1.5", isActive && "bg-sidebar-accent")}
                     render={
-                      <a href={`/agent/${defaultAgentId}/chat?session=${sessionId}`} />
+                      <a href={`/agent/${defaultAgentId}/chat?session=${session.sessionId}`} />
                     }
+                    title={session.key}
                   >
-                    <MessageSquareIcon className="size-3 text-primary shrink-0" />
+                    <MessageSquareIcon className="size-3 text-primary shrink-0 mt-0.5" />
                     <div className="flex flex-col min-w-0 gap-0">
-                      <span className="truncate text-xs leading-tight">{title}</span>
+                      <span className="truncate text-xs leading-tight">{label}</span>
                       <span className="text-[10px] text-muted-foreground/40 font-mono truncate">
-                        {sessionId.slice(0, 8)}
+                        {relativeTime}
+                        {usagePct !== null ? ` · ${usagePct}% ctx` : ""}
+                        {session.model ? ` · ${session.model.split("/").pop()}` : ""}
                       </span>
                     </div>
                   </SidebarMenuButton>
-                  <SidebarMenuAction
-                    showOnHover
-                    onClick={() => {
-                      deleteSession(sessionId)
-                      clearSessionMessages(sessionId)
-                    }}
-                    className="text-sidebar-foreground/40 hover:text-destructive"
-                  >
-                    <Trash2Icon className="size-3" />
-                  </SidebarMenuAction>
                 </SidebarMenuItem>
               )
             })}
