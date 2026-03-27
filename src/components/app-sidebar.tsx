@@ -32,43 +32,12 @@ import {
   FileIcon,
   FileTextIcon,
   FileCodeIcon,
-  MoreHorizontalIcon,
   CommandIcon,
   MessageSquareIcon,
-  CircleDotIcon,
-  CheckCircle2Icon,
   CircleIcon,
-  ClockIcon,
-  LoaderIcon,
-  XCircleIcon,
   PlusIcon,
   Trash2Icon,
-  SquareIcon,
 } from "lucide-react"
-
-// ─── Backend task type ──────────────────────────────────────
-type BackendTask = {
-  task_id: string
-  status: string
-  prompt: string
-  cwd: string | null
-  created_at: number
-  started_at: number | null
-  completed_at: number | null
-  result_text: string
-  error: string | null
-  cost_usd: number | null
-  duration_ms: number | null
-}
-
-const TASK_STATUS_ICON: Record<string, React.ReactNode> = {
-  pending: <CircleIcon className="size-3 text-muted-foreground/50" />,
-  queued: <CircleDotIcon className="size-3 text-blue-400/70" />,
-  running: <LoaderIcon className="size-3 text-primary animate-spin" />,
-  completed: <CheckCircle2Icon className="size-3 text-primary/60" />,
-  failed: <XCircleIcon className="size-3 text-red-400" />,
-  stopped: <SquareIcon className="size-3 text-amber-400" />,
-}
 
 const data = {
   user: {
@@ -138,40 +107,6 @@ function useBackendSessions() {
   return { sessions, createSession, deleteSession, refresh }
 }
 
-function useBackendTasks() {
-  const [tasks, setTasks] = useState<BackendTask[]>([])
-
-  useEffect(() => {
-    function fetchTasks() {
-      fetch("/api/proxy?path=/tasks")
-        .then((r) => r.json())
-        .then((data) => {
-          if (data.tasks) setTasks(data.tasks)
-        })
-        .catch(() => {})
-    }
-
-    fetchTasks()
-    const interval = setInterval(fetchTasks, 5000)
-    return () => clearInterval(interval)
-  }, [])
-
-  return tasks
-}
-
-function formatDuration(ms: number | null): string {
-  if (!ms) return ""
-  if (ms < 1000) return `${ms}ms`
-  const s = Math.floor(ms / 1000)
-  if (s < 60) return `${s}s`
-  return `${Math.floor(s / 60)}m ${s % 60}s`
-}
-
-function truncatePrompt(prompt: string, max = 40): string {
-  if (prompt.length <= max) return prompt
-  return prompt.slice(0, max) + "…"
-}
-
 // ─── Workspace folder entries ────────────────────────────────
 
 type FSEntry = {
@@ -225,7 +160,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const isAgentMode = pathname.startsWith("/agent")
   const agentId = isAgentMode ? pathname.split("/")[2] : null
   const { sessions, createSession, deleteSession } = useBackendSessions()
-  const tasks = useBackendTasks()
   const workspaceEntries = useWorkspaceEntries()
 
   // Get the default agent id for session chat links
@@ -234,9 +168,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const navItems = isAgentMode && agentId
     ? getAgentNav(agentId)
     : data.orgNav
-
-  const activeTasks = tasks.filter((t) => t.status === "running" || t.status === "queued" || t.status === "pending")
-  const completedTasks = tasks.filter((t) => t.status === "completed")
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -335,55 +266,6 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
                 </SidebarMenuItem>
               )
             })}
-          </SidebarMenu>
-        </SidebarGroup>
-
-        {/* Tasks */}
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden">
-          <SidebarGroupLabel>
-            Tasks
-            {tasks.length > 0 && (
-              <span className="ml-auto text-[10px] text-muted-foreground/50 tabular-nums">
-                {activeTasks.length} active · {completedTasks.length} done
-              </span>
-            )}
-          </SidebarGroupLabel>
-          <SidebarMenu>
-            {tasks.length === 0 && (
-              <SidebarMenuItem>
-                <SidebarMenuButton className="text-sidebar-foreground/40" disabled>
-                  <CircleIcon className="size-3 text-sidebar-foreground/30" />
-                  <span className="text-xs">No tasks</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
-            {tasks.slice(0, 6).map((task) => (
-              <SidebarMenuItem key={task.task_id}>
-                <SidebarMenuButton className="h-auto py-1.5" title={task.prompt}>
-                  <span className="shrink-0 mt-0.5">
-                    {TASK_STATUS_ICON[task.status] ?? TASK_STATUS_ICON.pending}
-                  </span>
-                  <div className="flex flex-col min-w-0 gap-0.5">
-                    <span className="truncate text-xs leading-tight">
-                      {truncatePrompt(task.prompt)}
-                    </span>
-                    <span className="text-[10px] text-muted-foreground/50 tabular-nums">
-                      {task.status}
-                      {task.duration_ms ? ` · ${formatDuration(task.duration_ms)}` : ""}
-                      {task.cost_usd ? ` · $${task.cost_usd.toFixed(2)}` : ""}
-                    </span>
-                  </div>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            ))}
-            {tasks.length > 6 && (
-              <SidebarMenuItem>
-                <SidebarMenuButton className="text-sidebar-foreground/70">
-                  <MoreHorizontalIcon className="text-sidebar-foreground/70" />
-                  <span className="text-xs">View all {tasks.length} tasks</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-            )}
           </SidebarMenu>
         </SidebarGroup>
 
