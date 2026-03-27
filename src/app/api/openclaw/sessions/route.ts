@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server"
-import { execSync } from "child_process"
 
 /**
- * Fetches the live session list from the OpenClaw Gateway via the CLI.
+ * Fetches the live session list from the OpenClaw Gateway via HTTP Tools Invoke API.
  *
- * The Gateway owns all session state. We call `openclaw gateway call sessions.list`
- * which connects to the running Gateway over WebSocket and returns the full session store.
+ * Uses POST /tools/invoke instead of CLI exec — ~35ms vs ~5400ms.
  *
- * Response shape mirrors the Gateway sessions.list payload:
- *   { sessions: GatewaySession[], count: number, defaults: {...} }
+ * The Gateway exposes a direct HTTP endpoint at /tools/invoke that accepts
+ * tool calls with Bearer auth. This avoids forking a new Node.js process for
+ * every request (the CLI exec approach had ~5s startup overhead each time).
  */
+
+const GATEWAY_URL = process.env.OPENCLAW_GATEWAY_URL || "http://127.0.0.1:18789"
+const GATEWAY_TOKEN = process.env.OPENCLAW_GATEWAY_TOKEN || "xo"
 
 export type GatewaySession = {
   key: string
@@ -36,26 +38,39 @@ export type GatewaySession = {
 
 export async function GET() {
   try {
-    const raw = execSync("openclaw gateway call sessions.list --params '{}'", {
-      timeout: 8000,
-      encoding: "utf8",
+    const res = await fetch(`${GATEWAY_URL}/tools/invoke`, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${GATEWAY_TOKEN}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ tool: "sessions_list", args: {} }),
+      // Short timeout — Gateway is local, should respond in <100ms
+      signal: AbortSignal.timeout(5000),
     })
 
-    // The CLI outputs a header line "Gateway call: sessions.list" before the JSON
-    // Strip everything before the first '{' to get clean JSON
-    const jsonStart = raw.indexOf("{")
-    if (jsonStart === -1) {
-      return NextResponse.json({ error: "No JSON in CLI output", raw }, { status: 502 })
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: `Gateway returned ${res.status}` },
+        { status: 502 }
+      )
     }
 
-    const payload = JSON.parse(raw.slice(jsonStart)) as {
-      sessions: GatewaySession[]
-      count: number
-      defaults: Record<string, unknown>
-      ts: number
+    const body = await res.json() as {
+      ok: boolean
+      result?: { details?: { sessions: GatewaySession[]; count: number } }
+      error?: string
     }
 
-    return NextResponse.json(payload)
+    if (!body.ok) {
+      return NextResponse.json({ error: body.error ?? "Gateway error" }, { status: 502 })
+    }
+
+    const details = body.result?.details
+    return NextResponse.json({
+      sessions: details?.sessions ?? [],
+      count: details?.count ?? 0,
+    })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     return NextResponse.json(
