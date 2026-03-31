@@ -5,13 +5,10 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import { usePathname, useRouter } from "next/navigation"
 
 import { NavMain } from "@/components/nav-main"
-import { NavSecondary } from "@/components/nav-secondary"
-import { NavUser } from "@/components/nav-user"
 import { ContextSwitcher } from "@/components/xo/context-switcher"
 import {
   Sidebar,
   SidebarContent,
-  SidebarFooter,
   SidebarGroup,
   SidebarGroupLabel,
   SidebarHeader,
@@ -39,6 +36,7 @@ import {
   PlusIcon,
   ArchiveIcon,
   ChevronDownIcon,
+  LinkIcon,
 } from "lucide-react"
 
 // ─── Static nav data ─────────────────────────────────────────
@@ -54,25 +52,19 @@ const orgNav = [
 const agentSoloNav = [
   { title: "Chat", url: "/agent/chat", icon: <MessageSquareIcon /> },
   { title: "Dashboard", url: "/agent", icon: <LayoutDashboardIcon /> },
+  { title: "Objectives", url: "/agent/objectives", icon: <TargetIcon /> },
+  { title: "Connections", url: "/agent/connections", icon: <LinkIcon /> },
+  { title: "Settings", url: "/agent/settings", icon: <Settings2Icon /> },
 ]
 
 function getAgentDetailNav(agentId: string) {
   return [
     { title: "Chat", url: `/agent/${agentId}/chat`, icon: <MessageSquareIcon /> },
     { title: "Dashboard", url: `/agent/${agentId}`, icon: <LayoutDashboardIcon /> },
+    { title: "Objectives", url: `/agent/${agentId}/objectives`, icon: <TargetIcon /> },
+    { title: "Connections", url: `/agent/${agentId}/connections`, icon: <LinkIcon /> },
+    { title: "Settings", url: `/agent/${agentId}/settings`, icon: <Settings2Icon /> },
   ]
-}
-
-const data = {
-  user: {
-    name: "xo",
-    email: "admin@xo.dev",
-    avatar: "",
-  },
-  navSecondary: [
-    { title: "Settings", url: "#", icon: <Settings2Icon /> },
-    { title: "Get Help", url: "#", icon: <CircleHelpIcon /> },
-  ],
 }
 
 // ─── Helpers ──────────────────────────────────────────────────
@@ -287,6 +279,34 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
       </SidebarHeader>
 
       <SidebarContent>
+        {/* Search */}
+        <SidebarGroup className="group-data-[collapsible=icon]:hidden px-2 pt-1 pb-0">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                className="text-sidebar-foreground/50 hover:text-sidebar-foreground/70"
+                tooltip="Search"
+                onClick={() =>
+                  window.dispatchEvent(
+                    new KeyboardEvent("keydown", {
+                      key: "k",
+                      code: "KeyK",
+                      metaKey: true,
+                      bubbles: true,
+                    })
+                  )
+                }
+              >
+                <CommandIcon className="size-4" />
+                <span>Search</span>
+                <kbd className="ml-auto inline-flex h-5 items-center gap-0.5 rounded border border-sidebar-border bg-sidebar-accent px-1.5 text-[10px] font-medium text-sidebar-foreground/50">
+                  ⌘K
+                </kbd>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
         <NavMain items={navItems} />
 
         {/* Workspace Folders */}
@@ -499,40 +519,18 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
           )}
         </SidebarGroup>
 
-        <NavSecondary items={data.navSecondary} className="mt-auto" />
-
-        {/* Command Palette shortcut */}
-        <SidebarGroup className="group-data-[collapsible=icon]:hidden px-2 pb-1">
+        {/* Get Help */}
+        <SidebarGroup className="mt-auto group-data-[collapsible=icon]:hidden">
           <SidebarMenu>
             <SidebarMenuItem>
-              <SidebarMenuButton
-                className="text-sidebar-foreground/50 hover:text-sidebar-foreground/70"
-                tooltip="Command Palette"
-                onClick={() =>
-                  window.dispatchEvent(
-                    new KeyboardEvent("keydown", {
-                      key: "k",
-                      code: "KeyK",
-                      metaKey: true,
-                      bubbles: true,
-                    })
-                  )
-                }
-              >
-                <CommandIcon className="size-4" />
-                <span>Command</span>
-                <kbd className="ml-auto inline-flex h-5 items-center gap-0.5 rounded border border-sidebar-border bg-sidebar-accent px-1.5 text-[10px] font-medium text-sidebar-foreground/50">
-                  ⌘K
-                </kbd>
+              <SidebarMenuButton render={<a href="#" />}>
+                <CircleHelpIcon className="size-4" />
+                <span>Get Help</span>
               </SidebarMenuButton>
             </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-
-      <SidebarFooter>
-        <NavUser user={data.user} />
-      </SidebarFooter>
     </Sidebar>
   )
 }

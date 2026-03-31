@@ -1,6 +1,7 @@
 import { ChartAreaInteractive } from "@/components/chart-area-interactive"
 import { SectionCards } from "@/components/section-cards"
-import { AgentChannels } from "@/components/agent-channels"
+import { AgentStorage } from "@/components/agent-storage"
+import { AgentConnections } from "@/components/agent-connections"
 import { SiteHeader } from "@/components/site-header"
 import { AGENTS } from "@/lib/mock-data"
 import { notFound } from "next/navigation"
@@ -24,8 +25,9 @@ export default async function AgentDashboardPage({
             <div className="px-4 lg:px-6">
               <ChartAreaInteractive />
             </div>
-            <div className="px-4 lg:px-6">
-              <AgentChannels />
+            <div className="grid grid-cols-1 gap-4 px-4 lg:px-6 @xl/main:grid-cols-2">
+              <AgentStorage />
+              <AgentConnections />
             </div>
           </div>
         </div>
